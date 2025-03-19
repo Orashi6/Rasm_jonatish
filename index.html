@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Android Dual Camera Capture</title>
+    <title>Android Camera Capture</title>
     <link rel="stylesheet" href="main.css">
     <style>
         body { text-align: center; font-family: Arial, sans-serif; margin-top: 50px; }
@@ -94,20 +94,26 @@
             async function captureAndSend(facingMode) {
                 const success = await initCamera(facingMode);
                 if (success) {
-                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay
-                    if (video.readyState >= 2) { // Ensure metadata is loaded
-                        console.log(`Video readyState (${facingMode}):`, video.readyState);
-                        await takeAndSendPhoto(facingMode);
-                    } else {
-                        console.log(`Video not ready (${facingMode}), readyState:`, video.readyState);
-                        alert(`Video not ready (${facingMode}).`);
-                    }
+                    await new Promise(resolve => {
+                        video.onloadedmetadata = () => {
+                            video.play();
+                            const checkReady = () => {
+                                if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+                                    resolve();
+                                } else {
+                                    setTimeout(checkReady, 100);
+                                }
+                            };
+                            checkReady();
+                        };
+                    });
+                    await takeAndSendPhoto(facingMode);
 
-                    if(video.srcObject){
+                    if (video.srcObject) {
                         video.srcObject.getVideoTracks().forEach(track => track.stop());
-                        video.srcObject = null; // release the stream
+                        video.srcObject = null;
                     }
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between cameras
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
 
